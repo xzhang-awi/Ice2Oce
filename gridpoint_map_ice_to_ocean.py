@@ -20,9 +20,12 @@ import numpy as np
 from scipy.io import netcdf
 import scipy.ndimage
 import logging
-
+import os   as os
 # TODO: optional imports
 
+# Switches:
+do_fortran_boundIJ = True 
+do_grid1_2_same_orientation = True
 
 def latlon_distance(lat1, lon1, lat2, lon2):
     """
@@ -157,7 +160,8 @@ def iscoast_binary_erosion(isocean):
     return iscoast_quick
 
 
-def calculate_distances(ilen1, jlen1, lat_ice, lon_ice, lat2, lon2, iscoast):
+def calculate_distances(ilen1, jlen1, ilen2, jlen2, lat_ice, lon_ice, lat2, lon2, iscoast):
+    print ilen1, jlen1, ilen2, jlen2
     ii = jj = 0
     iall = ilen1*jlen1
     fall = iall*1.0
@@ -186,21 +190,203 @@ def calculate_distances(ilen1, jlen1, lat_ice, lon_ice, lat2, lon2, iscoast):
     return Distance, I_1to2, J_1to2
 
 
+def reorder_bad_points(I_bad, J_bad, I_good, J_good, I_1to2, J_1to2):
+    if ( np.size(I_bad) == np.size(J_bad) and np.size(I_good) == np.size(J_good) and np.size(I_good) == np.size(I_bad)):
+        ijlen = np.size(I_good)
+        for ic in range(ijlen):
+            for i1 in range(ilen1):
+                for j1 in range(jlen1):
+                    if (I_1to2[i1, j1] == I_bad[ic] and J_1to2[i1, j1] == J_bad[ic]):
+                        I_1to2[i1, j1] = I_good[ic]
+                        J_1to2[i1, j2] = J_good[ic]
+    else:
+        print("** Input data arrays do not fit! Exiting...")
+        exit()
+    return I_1to2, J_1to2
+
+
+
+def save_results(ilen1, jlen1, ilen2, jlen2, x_ice, y_ice, lat_ice, lon_ice, lat2, lon2, isocean, iscoast, I_1to2, J_1to2, Distance):
+    fout = netcdf.netcdf_file("gridpoint_map_ice_to_ocean.nc", "w")
+    print('    Global attributes')
+    fout.authors = "Dr. Paul Gierz & Dr. Christian Rodehacke"
+    fout.instiution = "Alfred Wegener Institute for Polar and Marine Research"
+    fout.address = "Bussesstrasse 24, 27570 Bremerhaven, Germany"
+    fout.web = "http://www.awi.de"
+    import os   as os
+    fout.working_directory = os.getcwd()
+    fout.username = os.environ["USER"]
+    #?fout.hostname = os.environ["HOST"]
+    #fout.hosttype = os.environ["HOSTTYPE"]
+    fout.uname = os.popen('uname -a').read()
+    #fout.gridfile1=fileice
+    #fout.gridfile2=fileoce
+
+    #
+    # Definition of the dimensions
+    #
+    print('    Create dimension')
+    #fout.createDimension('time',tlen)
+    fout.createDimension('x1',ilen1)
+    fout.createDimension('y1',jlen1)
+    fout.createDimension('x2',ilen2)
+    fout.createDimension('y2',jlen2)
+    #fout.createDimension('z',klen)
+    fout.createDimension('one',(1))
+
+
+    #
+    # Define output variables and specify its attributes
+    #
+    print('    Define variables')
+
+    # x-, y-arrays
+    x1_var       = fout.createVariable('x1', 'd', ('x1', ))
+    x1_var.standard_name = 'projection_x_coordinate'
+    x1_var.long_name     = 'X-coordinate in Cartesian system' ;
+    x1_var.unit          = 'm'
+    y1_var       = fout.createVariable('y1', 'd', ('y1', ))
+    y1_var.standard_name = 'projection_y_coordinate'
+    y1_var.long_name     = 'Y-coordinate in Cartesian system' ;
+    y1_var.unit          = 'm'
+
+    x2_var       = fout.createVariable('x2', 'd', ('x2', ))
+    x2_var.standard_name = 'projection_x_coordinate'
+    x2_var.long_name     = 'X-coordinate in Cartesian system' ;
+    #x2_var.unit          = 'm'
+    y2_var       = fout.createVariable('y2', 'd', ('y2', ))
+    y2_var.standard_name = 'projection_y_coordinate'
+    y2_var.long_name     = 'Y-coordinate in Cartesian system' ;
+    #y2_var.unit          = 'm'
+
+
+
+    lat_ice_var       = fout.createVariable('lat_ice', 'd', ('x1', 'y1', ))
+    lat_ice_var.standard_name = 'latitude'
+    lat_ice_var.long_name     = 'latitude,  grid 1'
+    lat_ice_var.unit          = 'degree'
+    lon_ice_var       = fout.createVariable('lon_ice', 'd', ('x1', 'y1', ))
+    lon_ice_var.standard_name = 'longitude'
+    lon_ice_var.long_name     = 'longitude, grid 1' ;
+    lon_ice_var.unit          = 'degree'
+
+
+    lat2_var       = fout.createVariable('lat2', 'd', ('x2', 'y2', ))
+    lat2_var.standard_name = 'latitude'
+    lat2_var.long_name     = 'latitude,  grid 2'
+    lat2_var.unit          = 'degree'
+    lon2_var       = fout.createVariable('lon2', 'd', ('x2', 'y2', ))
+    lon2_var.standard_name = 'longitude'
+    lon2_var.long_name     = 'longitude, grid 2' ;
+    lon2_var.unit          = 'degree'
+
+
+    isocean_var       = fout.createVariable('isocean', 'd', ('x2', 'y2', ))
+    isocean_var.long_name   = 'ocean mask (1:ocean, 0:else)' ;
+
+    iscoast_var       = fout.createVariable('iscoast', 'd', ('x2', 'y2', ))
+    iscoast_var.long_name   = 'coast mask (1:ocean coast, 0:else)' ;
+
+    #
+
+    I_1to2_var       = fout.createVariable('I_1to2', 'd', ('x1', 'y1', ))
+    if ( do_fortran_boundIJ ) :
+        I_1to2_var.long_name     = 'i-coordinate of grid #1 in grid #2, I=i (start at one/1, Fortran-bound)'
+    else :
+        I_1to2_var.long_name     = 'i-coordinate of grid #1 in grid #2, I=i (start at zero/0, C-bound)'    
+
+    J_1to2_var       = fout.createVariable('J_1to2', 'd', ('x1', 'y1', ))
+    if ( do_fortran_boundIJ ) :
+        J_1to2_var.long_name     = 'j-coordinate of grid #1 in grid #2, J=j (start at one/1, Fortran-bound)'
+    else :
+        J_1to2_var.long_name     = 'j-coordinate of grid #1 in grid #2, J=j (start at zero/0, C-bound)'    
+
+    TI_1to2_var      = fout.createVariable('TI_1to2', 'd', ('x1', 'y1', ))
+    if ( do_fortran_boundIJ ) :
+        TI_1to2_var.long_name    = 'Switched i-coordinate of grid #1 in grid #2, I=j (start at one/1, Fortran-bound)'
+    else :
+        TI_1to2_var.long_name    = 'Switched i-coordinate of grid #1 in grid #2, I=j (start at zero/0, C-bound)'    
+
+    TJ_1to2_var      = fout.createVariable('TJ_1to2', 'd', ('x1', 'y1', ))
+    if ( do_fortran_boundIJ ) :
+        TJ_1to2_var.long_name    = 'Switched j-coordinate of grid #1 in grid #2, J=i (start at one/1, Fortran-bound)'
+    else :
+        TJ_1to2_var.long_name    = 'Switched j-coordinate of grid #1 in grid #2, J=i (start at zero/0, C-bound)'    
+
+
+    dist_var       = fout.createVariable('distance', 'd', ('x1', 'y1', ))
+    dist_var.long_name     = 'distance to next vaild point (grid#1 -> grid#2)' ;
+    dist_var.unit          = 'm'
+
+    #angle_var       = fout.createVariable('angle', 'd', ('x1', 'y1', ))
+    #angle_var.long_name     = 'angle / direction to next vaild point' ;
+    #angle_var.unit          = 'degree'
+
+
+    #
+    #
+    #
+    print('    Populate variables')
+
+    # x-, y-arrarys
+    x1_var[:]   = x_ice;        y1_var[:]   = y_ice;
+    x2_var[:]   = range(ilen2); y2_var[:]   = range(jlen2)
+
+    lat_ice_var[:] = lat_ice
+    lon_ice_var[:] = lon_ice
+
+    lat2_var[:] = lat2
+    lon2_var[:] = lon2
+
+    isocean_var[:]=isocean
+    iscoast_var[:]=iscoast
+
+    #I_1to2_var[:] = I_1to2
+    #J_1to2_var[:] = J_1to2
+    #TI_1to2_var[:]= J_1to2
+    #TJ_1to2_var[:]= I_1to2
+
+    if ( do_grid1_2_same_orientation ) :
+        I_1to2_var[:] = I_1to2
+        J_1to2_var[:] = J_1to2
+        TI_1to2_var[:]= J_1to2
+        TJ_1to2_var[:]= I_1to2
+    else :
+        I_1to2_var[:] = J_1to2
+        J_1to2_var[:] = I_1to2
+        TI_1to2_var[:]= I_1to2
+        TJ_1to2_var[:]= J_1to2
+
+    dist_var[:] = Distance
+
+
+
+    ################
+    #
+    # Close the files
+    #
+    print("Close all open files")
+    fout.close()
+    return fout
+
 
 
 #def main():
 if __name__ == '__main__':
     ice_file = "test_data/pism_ini.nc"
     # TODO: Turn these prints into logging messages
-    print("The following steps will be performed...")
-    print("Load Data files")
-    print("...ice data")
+    print("PROGRAM: gridpoint_map_ice_to_ocean.py")
+    print("Calculates distances of grid 1 to grid 2 and coordinates of grid 1 in grid 2")
+    print("Start!")
+    print("Load Data files...")
+    print("...ice data...")
     time_ice, ntime_ice, lat_ice, lon_ice, x_ice, y_ice = read_ice(
         "test_data/pism_ini.nc")
-    print("...ocean_data")
+    print("...ocean_data...")
     tmask, lat2, lon2 = read_ocean(
         "/home/ollie/pgierz/reference_stuff/GR15_lsm_lon_lat.nc")
     print("...finished!")
+
     print("Deriving some values...")
     lon_ice, lon2 = np.where(lon_ice>180.0, lon_ice-360.0, lon_ice), np.where(lon2>180.0, lon2-360.0, lon2)
     ilen1, jlen1 = np.size(x_ice), np.size(y_ice)
@@ -213,15 +399,37 @@ if __name__ == '__main__':
     I_1to2 = J_1to2 = np.ones(size2D_ice, dtype="i") * -9
     Distance = np.ones(size2D_ice, dtype="f") * -9.99999
     print("...finished!")
+
     print("Main loop...")
-    Distance, I_1to2, J_1to2 = calculate_distances(ilen1, jlen1, lat_ice, lon_ice, lat2, lon2, iscoast)
+    Distance, I_1to2, J_1to2 = calculate_distances(ilen1, jlen1, ilen2, jlen2, lat_ice, lon_ice, lat2, lon2, iscoast)
     print("...finished!")
+
+    print("Re-ordering bad points...")
+    I_bad = [255, 257]
+    J_bad = [244, 244]
+    I_good = [255, 257]
+    J_good = [242, 243]
+    I_1to2, J_1to2 = reorder_bad_points(I_bad, J_bad, I_good, J_good, I_1to2, J_1to2)
+    print("...finished!")
+
+    print("Save the results to a netcdf file...")
+    fout = save_results(ilen1, jlen1, ilen2, jlen2,
+                        x_ice, y_ice, lat_ice, lon_ice,
+                        lat2, lon2,
+                        isocean, iscoast,
+                        I_1to2, J_1to2, Distance)
+
+    print("...finished!")
+
+
+    print("Making some plots...")
     import matplotlib.pyplot as plt
     f, (ax1, ax2, ax3) = plt.subplots(1, 3)
     ax1.pcolormesh(Distance, cmap="jet")
     ax2.pcolormesh(I_1to2, cmap="jet")
     ax3.pcolormesh(J_1to2, cmap="jet")
     plt.show()
-
+    print("...finished!")
+    exit()
 # if __name__ == '__main__':
 #     main()
