@@ -40,7 +40,6 @@ def latlon_distance(lat1, lon1, lat2, lon2):
     Output
     dist  : distance between the points (meter)
     """
-
     # pi = 3.1415926535897932384626433832795028841971693993751058 # https://www.wolframalpha.com 2013-01-21
     # earthradius = 6.36751E6 #earth radius meters # https://www.wolframalpha.com 2013-01-21
     # deg2meter = 2.*pi*earthradius/360.
@@ -67,11 +66,11 @@ def read_ice(filename):
     with netcdf.netcdf_file(filename, mode="r") as fin_ice:
         time_ice = fin_ice.variables["time"][:].copy().squeeze()
         ntime_ice = np.size(time_ice) - 1
-        lat_ice = fin_ice.variables["lat"][:].copy().squeeze()
-        lon_ice = fin_ice.variables["lon"][:].copy().squeeze()
+        lat1 = fin_ice.variables["lat"][:].copy().squeeze()
+        lon1 = fin_ice.variables["lon"][:].copy().squeeze()
         x_ice = fin_ice.variables["x"][:].copy().squeeze()
         y_ice = fin_ice.variables["y"][:].copy().squeeze()
-    return time_ice, ntime_ice, lat_ice, lon_ice, x_ice, y_ice
+    return time_ice, ntime_ice, lat1, lon1, x_ice, y_ice
 
 
 def read_ocean(filename):
@@ -160,12 +159,11 @@ def iscoast_binary_erosion(isocean):
     return iscoast_quick
 
 
-def calculate_distances(ilen1, jlen1, ilen2, jlen2, lat_ice, lon_ice, lat2, lon2, iscoast):
+def calculate_distances(ilen1, jlen1, ilen2, jlen2, lat1, lon1, lat2, lon2, iscoast):
     print ilen1, jlen1, ilen2, jlen2
-    ii = jj = 0
-    iall = ilen1*jlen1
-    fall = iall*1.0
-    ic = 0
+    Distance = np.ones(size2D_ice, dtype="f") * -9.99999
+    I_1to2 = np.ones(size2D_ice, dtype="i") * -9
+    J_1to2 = np.ones(size2D_ice, dtype="i") * -9
     import progressbar
     bar = progressbar.ProgressBar(widgets=[
         ' [', progressbar.Timer(), '] ',
@@ -173,20 +171,20 @@ def calculate_distances(ilen1, jlen1, ilen2, jlen2, lat_ice, lon_ice, lat2, lon2
         ' (', progressbar.ETA(), ') ',])
     for i1 in bar(range(ilen1)):
         for j1 in range(jlen1):
-            #print(" Grid #1: point \t %s of %s (%i\%)" % (ic, iall, ic*100./iall))
             distance = 9.9E24
-            Flag = False
             for i2 in range(ilen2):
                 for j2 in range(jlen2):
                     if iscoast[i2, j2]:
-                        dist = latlon_distance(lat_ice[i1, j1], lon_ice[i1, j1], lat2[i2, j2], lon2[i2, j2])
+                        dist = latlon_distance(lat1[i1, j1], lon1[i1, j1], lat2[i2, j2], lon2[i2, j2])
                         if dist < distance:
-                            ii, jj, distance, Flag = i2, j2, dist, True
-            if Flag:
-                Distance[i1, j1] = distance
-                I_1to2[i1, j1] = ii
-                J_1to2[i1, j1] = jj
-            ic += 1
+                            ii = i2
+                            jj = j2
+                            distance = dist
+            Distance[i1, j1] = distance
+            I_1to2[i1, j1] = ii
+            J_1to2[i1, j1] = jj
+            #if ic > 0:
+            #    print "Identical Values %s times" % ic
     return Distance, I_1to2, J_1to2
 
 
@@ -206,7 +204,7 @@ def reorder_bad_points(I_bad, J_bad, I_good, J_good, I_1to2, J_1to2):
 
 
 
-def save_results(ilen1, jlen1, ilen2, jlen2, x_ice, y_ice, lat_ice, lon_ice, lat2, lon2, isocean, iscoast, I_1to2, J_1to2, Distance):
+def save_results(ilen1, jlen1, ilen2, jlen2, x_ice, y_ice, lat1, lon1, lat2, lon2, isocean, iscoast, I_1to2, J_1to2, Distance):
     fout = netcdf.netcdf_file("gridpoint_map_ice_to_ocean.nc", "w")
     print('    Global attributes')
     fout.authors = "Dr. Paul Gierz & Dr. Christian Rodehacke"
@@ -261,14 +259,14 @@ def save_results(ilen1, jlen1, ilen2, jlen2, x_ice, y_ice, lat_ice, lon_ice, lat
 
 
 
-    lat_ice_var       = fout.createVariable('lat_ice', 'd', ('x1', 'y1', ))
-    lat_ice_var.standard_name = 'latitude'
-    lat_ice_var.long_name     = 'latitude,  grid 1'
-    lat_ice_var.unit          = 'degree'
-    lon_ice_var       = fout.createVariable('lon_ice', 'd', ('x1', 'y1', ))
-    lon_ice_var.standard_name = 'longitude'
-    lon_ice_var.long_name     = 'longitude, grid 1' ;
-    lon_ice_var.unit          = 'degree'
+    lat1_var       = fout.createVariable('lat1', 'd', ('x1', 'y1', ))
+    lat1_var.standard_name = 'latitude'
+    lat1_var.long_name     = 'latitude,  grid 1'
+    lat1_var.unit          = 'degree'
+    lon1_var       = fout.createVariable('lon1', 'd', ('x1', 'y1', ))
+    lon1_var.standard_name = 'longitude'
+    lon1_var.long_name     = 'longitude, grid 1' ;
+    lon1_var.unit          = 'degree'
 
 
     lat2_var       = fout.createVariable('lat2', 'd', ('x2', 'y2', ))
@@ -332,8 +330,8 @@ def save_results(ilen1, jlen1, ilen2, jlen2, x_ice, y_ice, lat_ice, lon_ice, lat
     x1_var[:]   = x_ice;        y1_var[:]   = y_ice;
     x2_var[:]   = range(ilen2); y2_var[:]   = range(jlen2)
 
-    lat_ice_var[:] = lat_ice
-    lon_ice_var[:] = lon_ice
+    lat1_var[:] = lat1
+    lon1_var[:] = lon1
 
     lat2_var[:] = lat2
     lon2_var[:] = lon2
@@ -380,7 +378,7 @@ if __name__ == '__main__':
     print("Start!")
     print("Load Data files...")
     print("...ice data...")
-    time_ice, ntime_ice, lat_ice, lon_ice, x_ice, y_ice = read_ice(
+    time_ice, ntime_ice, lat1, lon1, x_ice, y_ice = read_ice(
         "test_data/pism_ini.nc")
     print("...ocean_data...")
     tmask, lat2, lon2 = read_ocean(
@@ -388,7 +386,7 @@ if __name__ == '__main__':
     print("...finished!")
 
     print("Deriving some values...")
-    lon_ice, lon2 = np.where(lon_ice>180.0, lon_ice-360.0, lon_ice), np.where(lon2>180.0, lon2-360.0, lon2)
+    lon1, lon2 = np.where(lon1>180.0, lon1-360.0, lon1), np.where(lon2>180.0, lon2-360.0, lon2)
     ilen1, jlen1 = np.size(x_ice), np.size(y_ice)
     ilen2, jlen2 = np.shape(lat2)
     size2D_ice = (ilen1, jlen1)
@@ -396,25 +394,24 @@ if __name__ == '__main__':
     isocean = np.where(tmask > 0, True, False)
     iscoast = iscoast_explicit(ilen2, jlen2, isocean)
     iscoast_quick = iscoast_binary_erosion(isocean)
-    I_1to2 = J_1to2 = np.ones(size2D_ice, dtype="i") * -9
-    Distance = np.ones(size2D_ice, dtype="f") * -9.99999
     print("...finished!")
 
     print("Main loop...")
-    Distance, I_1to2, J_1to2 = calculate_distances(ilen1, jlen1, ilen2, jlen2, lat_ice, lon_ice, lat2, lon2, iscoast)
+    Distance, I_1to2, J_1to2 = calculate_distances(ilen1, jlen1, ilen2, jlen2, lat1, lon1, lat2, lon2, iscoast)
     print("...finished!")
-
+    print (I_1to2 == J_1to2).all()
     print("Re-ordering bad points...")
     I_bad = [255, 257]
     J_bad = [244, 244]
     I_good = [255, 257]
     J_good = [242, 243]
     I_1to2, J_1to2 = reorder_bad_points(I_bad, J_bad, I_good, J_good, I_1to2, J_1to2)
+    print (I_1to2 == J_1to2).all()
     print("...finished!")
 
     print("Save the results to a netcdf file...")
     fout = save_results(ilen1, jlen1, ilen2, jlen2,
-                        x_ice, y_ice, lat_ice, lon_ice,
+                        x_ice, y_ice, lat1, lon1,
                         lat2, lon2,
                         isocean, iscoast,
                         I_1to2, J_1to2, Distance)
@@ -422,14 +419,14 @@ if __name__ == '__main__':
     print("...finished!")
 
 
-    print("Making some plots...")
-    import matplotlib.pyplot as plt
-    f, (ax1, ax2, ax3) = plt.subplots(1, 3)
-    ax1.pcolormesh(Distance, cmap="jet")
-    ax2.pcolormesh(I_1to2, cmap="jet")
-    ax3.pcolormesh(J_1to2, cmap="jet")
-    plt.show()
-    print("...finished!")
+    # print("Making some plots...")
+    # import matplotlib.pyplot as plt
+    # f, (ax1, ax2, ax3) = plt.subplots(1, 3)
+    # ax1.pcolormesh(Distance, cmap="jet")
+    # ax2.pcolormesh(I_1to2, cmap="jet")
+    # ax3.pcolormesh(J_1to2, cmap="jet")
+    # plt.show()
+    # print("...finished!")
     exit()
 # if __name__ == '__main__':
 #     main()
