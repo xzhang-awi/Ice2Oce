@@ -7,8 +7,8 @@ Usage: gridpoint_map_ice_to_ocean.py [options] ICE_FILE OCEAN_FILE OUTPUT_FILE
 Options:
 -g, --ice-grid-orientation-as-ocean
 -c, --restrict-coast
+-i, --do-fortran-boundIJ
 -b, --binary-erosion-coast
--f, --do-fortran-boundIJ
 
 Paul Gierz, June 2017
 
@@ -381,8 +381,8 @@ def main(args):
 
 if __name__ == '__main__':
     args = docopt.docopt(__doc__)
-    do_grid1_2_same_orientation = args["--ice-grid-orientation-as-ocean"]
-    do_fortran_boundIJ = args["--do-fortran-boundIJ"]
+    do_grid1_2_same_orientation = args["--ice-grid-orientation-as-ocean"] or False
+    do_fortran_bound_IJ = args["--do-fortran-boundIJ"] or False
     if args['--binary-erosion-coast']:
         make_coastline_mask = iscoast_binary_erosion
     else:
