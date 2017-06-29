@@ -1,6 +1,9 @@
+# Compiler Settings
 FC=mpiifort
 FCFLAGS=-O3 -xHost -DTREAT_OVERLAY -Duse_netCDF -Duse_comm_MPI1 -ip -align -fno-alias
 FCFLAGS_MPIOM=-O3 -fpe0 -i4 -fp-model source -fast-transcendentals -no-prec-sqrt -xHost -heap-arrays -convert big_endian -fpp
+
+# Path to test files
 testfile_raw=/work/ollie/pgierz/mpiesm-pism-sc/experiments/basic/couple/pismr_greenland_mass_and_heat_flux_to_mpiom.nc
 testfile_post=FBFLOMPIOM.ext8
 make:

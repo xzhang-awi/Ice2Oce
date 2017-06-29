@@ -4,7 +4,6 @@ program test
   REAL*8, allocatable :: GLACFLUXG(:,:)
   CHARACTER (len=16) :: glacfname
   INTEGER, parameter :: ifid_glacflux=552
-  INTEGER :: l1
   
   ALLOCATE(GLACFLUXG(254, 220))
   write (*,*) "Hello, World!" 
