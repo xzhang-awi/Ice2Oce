@@ -1,6 +1,19 @@
 #!/usr/bin/env python
+"""
+This program basal and frontal melt from PISM to MPIOM
+
+Usage: transform_ice_to_ocean.py [options] GRID_FILE ICE_FILE OCEAN_FILE
+
+Options:
+-i, --do-fortran-boundIJ
+-l, --write-latlon
+-t, --write-time
+
+"""
 import numpy as np
 from scipy.io import netcdf
+import docopt
+
 
 def load_data(file_grid, file_ice, file_ocean):
     with netcdf.netcdf_file(file_grid, "r") as filegrid, netcdf.netcdf_file(file_ice, "r") as fileice:
@@ -9,8 +22,8 @@ def load_data(file_grid, file_ice, file_ocean):
         isocean = filegrid.variables["isocean"].data.copy()
         time_ice = fileice.variables["time"].data.copy()
         time_ice0 = np.size(time_ice) - 1
-        bmb = fileice.variables["bmelt"].data.copy()
-        fmb = fileice.variables["thk"].data.copy()
+        bmb = fileice.variables["bmelt"].data.squeeze().copy()
+        fmb = fileice.variables["thk"].data.squeeze().copy()
         fmb = np.where(fmb>0., 1., 0.)
         return II, JJ, isocean, time_ice, time_ice0, bmb, fmb
 
@@ -21,14 +34,15 @@ def main():
     pass
 
 if __name__ == '__main__':
+    args = docopt.docopt(__doc__)
+    print args
+    file_grid = args["GRID_FILE"]
+    file_ice = args["ICE_FILE"]
+    file_ocean = args["OCEAN_FILE"]
     # Program Flow Switches
-    do_fortran_boundIJ = True
-    write_latlon = False
-    do_write_time = False
-    # Filenames # TODO: Later as command line switches
-    file_grid = "gridpoint_map_ice_to_ocean.nc"
-    file_ice = "test_data/pism_ini.nc"
-    file_ocean = "./ice2oce.nc"
+    do_fortran_boundIJ = args["--do-fortran-boundIJ"] or False
+    write_latlon = args["--write-latlon"] or False
+    do_write_time = args["--write-time"] or False
 
     # Physical Parameters
     latent_heat = 333700.       # J/kg, PG: Of what?
@@ -38,11 +52,11 @@ if __name__ == '__main__':
 
     # Load the data
     II, JJ, isocean, time_ice, time_ice0, bmb, fmb = load_data(file_grid, file_ice, file_ocean)
-    ilen1, jlen1 = np.shape(bmb[0, :, :])
+    ilen1, jlen1 = np.shape(bmb)
     ilen2, jlen2 = np.shape(isocean)
     tlen = np.size(time_ice)
 
-    if tlen>=1:
+    if tlen > 1:
         sizeIce2Oce = (tlen, ilen2, jlen2)
     else:
         sizeIce2Oce = (ilen2, jlen2)
@@ -56,7 +70,7 @@ if __name__ == '__main__':
     bhb_oce = np.zeros(sizeIce2Oce)
     fhb_oce = np.zeros(sizeIce2Oce)
 
-    if tlen >= 1:
+    if tlen > 1:
         for it in range(tlen):
             for i in range(ilen1):
                 for j in range(jlen1):
@@ -67,8 +81,8 @@ if __name__ == '__main__':
     else:
         for i in range(ilen1):
             for j in range(jlen1):
-                io = II[i, j]
-                jo = JJ[i, j]
+                io = int(II[i, j])
+                jo = int(JJ[i, j])
                 bmb_oce[io, jo] += bmb[i, j]
                 fmb_oce[io, jo] += fmb[i, j]
     # Convert latent heat to a heat flux by assuming everything must melt completely:
