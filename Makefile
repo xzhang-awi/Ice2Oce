@@ -10,7 +10,7 @@ make:
 	$(FC) $(FCFLAGS) $(FCFLAGS_MPIOM) -o read_glacflux read_glacflux.f90
 
 clean:
-	rm read_glacflux FBFLOMPIOM.ext8
+	rm read_glacflux FBFLOMPIOM.ext8 FBFLOMPIOM.txt
 
 test:
 	./read_glacflux
@@ -21,5 +21,8 @@ generate_test:
 		-selvar,bmr $(testfile_raw) \
 		-selvar,fmr $(testfile_raw) \
 		$(testfile_post)
+
+	cdo -outputf,%12.8e,1 \
+		$(testfile_post) > FBFLOMPIOM.txt
 
 all: clean make generate_test test
